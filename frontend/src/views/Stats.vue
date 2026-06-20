@@ -87,7 +87,7 @@ const weeklyStatsOption = computed(() => {
 })
 
 onMounted(() => {
-  statsStore.loadStats()
+  statsStore.refreshStats()
 })
 </script>
 

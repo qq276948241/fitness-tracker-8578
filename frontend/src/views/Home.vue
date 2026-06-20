@@ -294,6 +294,7 @@ const loadData = async () => {
 }
 
 const submitWorkout = async () => {
+  if (submitting.value) return
   if (!workoutForm.value.workout_type) {
     ElMessage.warning('请选择训练类型')
     return
@@ -301,6 +302,7 @@ const submitWorkout = async () => {
 
   try {
     submitting.value = true
+    const recordDate = workoutForm.value.date
     await createWorkout(workoutForm.value)
     ElMessage.success('打卡成功！')
     showWorkoutDialog.value = false
@@ -312,6 +314,9 @@ const submitWorkout = async () => {
       notes: ''
     }
     await Promise.all([loadData(), statsStore.refreshStats()])
+    const year = dayjs(recordDate).year()
+    const month = dayjs(recordDate).month() + 1
+    statsStore.refreshCalendar(year, month)
   } catch (err) {
     console.error(err)
   } finally {
@@ -320,12 +325,17 @@ const submitWorkout = async () => {
 }
 
 const submitWeight = async () => {
+  if (submitting.value) return
   try {
     submitting.value = true
+    const recordDate = weightForm.value.date
     await createWeightRecord(weightForm.value)
     ElMessage.success('体重记录已保存！')
     showWeightDialog.value = false
     await Promise.all([loadData(), statsStore.refreshStats()])
+    const year = dayjs(recordDate).year()
+    const month = dayjs(recordDate).month() + 1
+    statsStore.refreshCalendar(year, month)
   } catch (err) {
     console.error(err)
   } finally {
@@ -338,9 +348,15 @@ const deleteWorkoutItem = async (id) => {
     await ElMessageBox.confirm('确定要删除这条训练记录吗？', '确认删除', {
       type: 'warning'
     })
+    const workout = todayWorkouts.value.find(w => w.id === id)
     await deleteWorkout(id)
     ElMessage.success('删除成功')
     await Promise.all([loadData(), statsStore.refreshStats()])
+    if (workout) {
+      const year = dayjs(workout.date).year()
+      const month = dayjs(workout.date).month() + 1
+      statsStore.refreshCalendar(year, month)
+    }
   } catch (err) {
     if (err !== 'cancel') {
       console.error(err)

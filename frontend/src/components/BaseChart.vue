@@ -33,6 +33,7 @@ const resizeHandler = () => {
 watch(() => props.option, (newOption) => {
   if (chartInstance) {
     chartInstance.setOption(newOption, true)
+    chartInstance.resize()
   }
 }, { deep: true })
 

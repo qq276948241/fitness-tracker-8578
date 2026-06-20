@@ -205,7 +205,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, List, Calendar } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
@@ -240,8 +240,20 @@ const workoutTypes = WORKOUT_TYPES
 const calendarLoading = ref(false)
 const calendarYear = ref(dayjs().year())
 const calendarMonth = ref(dayjs().month() + 1)
-const calendarDays = ref([])
-const calendarSummary = ref({ checked_days: 0, total_days: 0, total_duration: 0, total_calories: 0 })
+
+const calendarKey = computed(() => {
+  const m = String(calendarMonth.value).padStart(2, '0')
+  return `${calendarYear.value}-${m}`
+})
+
+const calendarData = computed(() => {
+  return statsStore.calendarMap[calendarKey.value] || { days: [], summary: {} }
+})
+
+const calendarDays = computed(() => calendarData.value.days || [])
+const calendarSummary = computed(() => {
+  return calendarData.value.summary || { checked_days: 0, total_days: 0, total_duration: 0, total_calories: 0 }
+})
 
 const workoutDialogVisible = ref(false)
 const weightDialogVisible = ref(false)
@@ -286,9 +298,7 @@ const loadWorkouts = async () => {
 const loadCalendar = async () => {
   calendarLoading.value = true
   try {
-    const data = await statsStore.loadCalendarData(calendarYear.value, calendarMonth.value)
-    calendarDays.value = data.days
-    calendarSummary.value = data.summary
+    await statsStore.loadCalendarData(calendarYear.value, calendarMonth.value)
   } catch (err) {
     console.error(err)
   } finally {

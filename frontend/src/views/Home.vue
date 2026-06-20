@@ -101,6 +101,46 @@
           </div>
         </div>
 
+        <div v-if="stats.target_weight" class="card target-card">
+          <div class="card-header">
+            <h3>目标进度</h3>
+            <el-button text type="primary" @click="goSettings">设置</el-button>
+          </div>
+          <div class="target-content">
+            <div class="target-numbers">
+              <div class="target-current">
+                <span class="num">{{ stats.current_weight ? stats.current_weight.toFixed(1) : '--' }}</span>
+                <span class="unit">当前 kg</span>
+              </div>
+              <div class="target-arrow">
+                <el-icon :size="20"><ArrowRight /></el-icon>
+              </div>
+              <div class="target-goal">
+                <span class="num">{{ stats.target_weight.toFixed(1) }}</span>
+                <span class="unit">目标 kg</span>
+              </div>
+            </div>
+
+            <div class="target-progress-bar">
+              <el-progress
+                :percentage="targetPercentage"
+                :color="targetColor"
+                :stroke-width="18"
+                :format="formatProgress"
+                striped
+                striped-flow
+              />
+            </div>
+
+            <div class="target-message" :class="targetAchieved ? 'achieved' : 'pending'">
+              <el-icon v-if="targetAchieved"><CircleCheckFilled /></el-icon>
+              <el-icon v-else><Trophy /></el-icon>
+              <span v-if="targetAchieved">太棒了！已达成目标体重 🎉</span>
+              <span v-else>加油！距离目标还差 <strong>{{ Math.abs(stats.weight_to_target).toFixed(1) }}</strong> kg</span>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <h3>本周训练</h3>
@@ -185,11 +225,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Clock, Star, Delete, Document, DataLine,
-  ArrowUp, ArrowDown
+  ArrowUp, ArrowDown, ArrowRight, Trophy, CircleCheckFilled
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
@@ -197,6 +238,7 @@ import { getWorkouts, createWorkout, deleteWorkout } from '@/api/workout'
 import { getWeightRecords, createWeightRecord } from '@/api/weight'
 import { getStats } from '@/api/stats'
 
+const router = useRouter()
 const today = dayjs().format('YYYY-MM-DD')
 const stats = ref({})
 const todayWorkouts = ref([])
@@ -206,6 +248,39 @@ const showWeightDialog = ref(false)
 const submitting = ref(false)
 const weeklyChartRef = ref(null)
 let weeklyChart = null
+
+const targetAchieved = computed(() => {
+  return stats.value.target_weight &&
+         stats.value.current_weight &&
+         stats.value.current_weight <= stats.value.target_weight
+})
+
+const targetPercentage = computed(() => {
+  if (!stats.value.target_weight || !stats.value.current_weight) return 0
+  const current = stats.value.current_weight
+  const target = stats.value.target_weight
+  const initial = stats.value.weight_history?.[0]?.weight || current
+  const total = Math.abs(initial - target)
+  if (total === 0) return 100
+  const done = Math.abs(initial - current)
+  let pct = (done / total) * 100
+  return Math.min(100, Math.max(0, Math.round(pct)))
+})
+
+const targetColor = computed(() => {
+  if (targetAchieved.value) return '#67c23a'
+  if (targetPercentage.value >= 70) return '#95d475'
+  if (targetPercentage.value >= 40) return '#e6a23c'
+  return '#f56c6c'
+})
+
+const formatProgress = (percentage) => {
+  return `${percentage}%`
+}
+
+const goSettings = () => {
+  router.push('/settings')
+}
 
 const workoutForm = ref({
   date: today,
@@ -485,5 +560,75 @@ onMounted(() => {
 .weekly-chart {
   height: 200px;
   width: 100%;
+}
+
+.target-card {
+  background: linear-gradient(135deg, #fff9f0 0%, #fff5f6 100%);
+}
+
+.target-content {
+  padding: 5px 0;
+}
+
+.target-numbers {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin-bottom: 20px;
+}
+
+.target-current,
+.target-goal {
+  text-align: center;
+}
+
+.target-numbers .num {
+  display: block;
+  font-size: 32px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1.2;
+}
+
+.target-goal .num {
+  color: #e6a23c;
+}
+
+.target-numbers .unit {
+  font-size: 13px;
+  color: #909399;
+}
+
+.target-arrow {
+  color: #c0c4cc;
+}
+
+.target-progress-bar {
+  margin-bottom: 16px;
+}
+
+.target-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.target-message.pending {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.target-message.achieved {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.target-message strong {
+  font-size: 18px;
+  margin: 0 4px;
 }
 </style>

@@ -20,6 +20,10 @@
               <el-input-number v-model="form.height" :min="100" :max="250" :step="0.1" />
               <span style="margin-left: 10px; color: #909399">cm</span>
             </el-form-item>
+            <el-form-item label="目标体重">
+              <el-input-number v-model="form.target_weight" :min="30" :max="200" :step="0.5" />
+              <span style="margin-left: 10px; color: #909399">kg</span>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" :loading="saving" @click="saveProfile">
                 保存修改
@@ -69,6 +73,16 @@
               <span class="stat-label">当前体重</span>
               <span class="stat-value">{{ stats.current_weight ? stats.current_weight.toFixed(1) : '--' }} kg</span>
             </div>
+            <div class="stat-item">
+              <span class="stat-label">目标体重</span>
+              <span class="stat-value">{{ stats.target_weight ? stats.target_weight.toFixed(1) : '未设置' }} {{ stats.target_weight ? 'kg' : '' }}</span>
+            </div>
+            <div class="stat-item" v-if="stats.target_weight && stats.current_weight">
+              <span class="stat-label">距目标</span>
+              <span class="stat-value" :class="stats.weight_to_target > 0 ? 'text-danger' : 'text-success'">
+                {{ Math.abs(stats.weight_to_target).toFixed(1) }} kg {{ stats.weight_to_target > 0 ? '还需减' : '已达标' }}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -103,7 +117,8 @@ const form = ref({
   username: '',
   full_name: '',
   email: '',
-  height: null
+  height: null,
+  target_weight: null
 })
 
 const passwordForm = ref({
@@ -118,7 +133,8 @@ const loadUserInfo = () => {
       username: userStore.user.username,
       full_name: userStore.user.full_name || '',
       email: userStore.user.email,
-      height: userStore.user.height || null
+      height: userStore.user.height || null,
+      target_weight: userStore.user.target_weight || null
     }
   }
 }
@@ -139,10 +155,12 @@ const saveProfile = async () => {
       username: form.value.username,
       full_name: form.value.full_name,
       email: form.value.email,
-      height: form.value.height
+      height: form.value.height,
+      target_weight: form.value.target_weight
     })
     userStore.updateUser(res)
     ElMessage.success('保存成功')
+    loadStats()
   } catch (err) {
     console.error(err)
   } finally {
@@ -223,5 +241,13 @@ onMounted(() => {
 
 .about-desc {
   margin-top: 10px;
+}
+
+.text-danger {
+  color: #f56c6c;
+}
+
+.text-success {
+  color: #67c23a;
 }
 </style>

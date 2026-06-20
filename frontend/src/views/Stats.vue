@@ -33,13 +33,13 @@
       <el-col :span="12">
         <div class="card">
           <h3 class="chart-title">训练类型分布</h3>
-          <div ref="typeChartRef" class="chart"></div>
+          <BaseChart :option="typePieOption" height="280px" />
         </div>
       </el-col>
       <el-col :span="12">
         <div class="card">
           <h3 class="chart-title">体重变化趋势</h3>
-          <div ref="weightChartRef" class="chart"></div>
+          <BaseChart :option="weightTrendOption" height="280px" />
         </div>
       </el-col>
     </el-row>
@@ -48,7 +48,7 @@
       <el-col :span="24">
         <div class="card">
           <h3 class="chart-title">近7天训练时长</h3>
-          <div ref="weeklyChartRef" class="chart-horizontal"></div>
+          <BaseChart :option="weeklyStatsOption" height="320px" />
         </div>
       </el-col>
     </el-row>
@@ -56,257 +56,38 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import * as echarts from 'echarts'
-import dayjs from 'dayjs'
-import { getStats } from '@/api/stats'
+import { computed, onMounted } from 'vue'
+import { useStatsStore } from '@/stores/stats'
+import BaseChart from '@/components/BaseChart.vue'
+import {
+  getWorkoutTypePieOption,
+  getWeightTrendOption,
+  getWeeklyStatsOption
+} from '@/utils/chartOptions'
 
-const stats = ref({})
-const typeChartRef = ref(null)
-const weightChartRef = ref(null)
-const weeklyChartRef = ref(null)
+const statsStore = useStatsStore()
 
-let typeChart = null
-let weightChart = null
-let weeklyChart = null
+const stats = computed(() => statsStore.stats)
 
 const avgDuration = computed(() => {
   if (!stats.value.total_workouts) return 0
   return Math.round(stats.value.total_duration / stats.value.total_workouts)
 })
 
-const loadStats = async () => {
-  try {
-    const res = await getStats()
-    stats.value = res
-    await nextTick()
-    renderCharts()
-  } catch (err) {
-    console.error(err)
-  }
-}
+const typePieOption = computed(() => {
+  return getWorkoutTypePieOption(stats.value.workout_types || {})
+})
 
-const renderCharts = () => {
-  renderTypeChart()
-  renderWeightChart()
-  renderWeeklyChart()
-}
+const weightTrendOption = computed(() => {
+  return getWeightTrendOption(stats.value.weight_history || [])
+})
 
-const renderTypeChart = () => {
-  if (!typeChartRef.value) return
-
-  if (!typeChart) {
-    typeChart = echarts.init(typeChartRef.value)
-  }
-
-  const data = Object.entries(stats.value.workout_types || {}).map(([name, value]) => ({
-    name,
-    value
-  }))
-
-  const option = {
-    tooltip: {
-      trigger: 'item',
-      formatter: '{b}: {c}次 ({d}%)'
-    },
-    legend: {
-      orient: 'vertical',
-      right: 10,
-      top: 'center',
-      textStyle: { color: '#606266', fontSize: 13 }
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['45%', '70%'],
-        center: ['35%', '50%'],
-        avoidLabelOverlap: false,
-        itemStyle: {
-          borderRadius: 6,
-          borderColor: '#fff',
-          borderWidth: 2
-        },
-        label: {
-          show: false
-        },
-        emphasis: {
-          label: {
-            show: true,
-            fontSize: 14,
-            fontWeight: 'bold'
-          }
-        },
-        data: data.length > 0 ? data : [{ name: '暂无数据', value: 0 }],
-        color: ['#667eea', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#409eff']
-      }
-    ]
-  }
-
-  typeChart.setOption(option)
-}
-
-const renderWeightChart = () => {
-  if (!weightChartRef.value) return
-
-  if (!weightChart) {
-    weightChart = echarts.init(weightChartRef.value)
-  }
-
-  const history = stats.value.weight_history || []
-  const dates = history.map(item => item.date.slice(5))
-  const weights = history.map(item => item.weight)
-
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      formatter: '{b}<br/>体重: {c} kg'
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '10%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: dates,
-      axisLine: { lineStyle: { color: '#e4e7ed' } },
-      axisLabel: { color: '#909399', fontSize: 12 }
-    },
-    yAxis: {
-      type: 'value',
-      scale: true,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f0f2f5' } },
-      axisLabel: { color: '#909399', fontSize: 12 }
-    },
-    series: [
-      {
-        data: weights,
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: {
-          width: 3,
-          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#667eea' },
-            { offset: 1, color: '#764ba2' }
-          ])
-        },
-        itemStyle: {
-          color: '#667eea'
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(102, 126, 234, 0.3)' },
-            { offset: 1, color: 'rgba(102, 126, 234, 0.05)' }
-          ])
-        }
-      }
-    ]
-  }
-
-  weightChart.setOption(option)
-}
-
-const renderWeeklyChart = () => {
-  if (!weeklyChartRef.value) return
-
-  if (!weeklyChart) {
-    weeklyChart = echarts.init(weeklyChartRef.value)
-  }
-
-  const weeklyData = stats.value.weekly_data || []
-  const days = weeklyData.map(item => item.date.slice(5))
-  const durations = weeklyData.map(item => item.duration)
-  const calories = weeklyData.map(item => item.calories)
-
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' }
-    },
-    legend: {
-      data: ['训练时长', '消耗卡路里'],
-      top: 0,
-      textStyle: { color: '#606266' }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '15%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: days,
-      axisLine: { lineStyle: { color: '#e4e7ed' } },
-      axisLabel: { color: '#909399', fontSize: 12 }
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: '分钟',
-        position: 'left',
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { lineStyle: { color: '#f0f2f5' } },
-        axisLabel: { color: '#909399', fontSize: 12 }
-      },
-      {
-        type: 'value',
-        name: '千卡',
-        position: 'right',
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { show: false },
-        axisLabel: { color: '#909399', fontSize: 12 }
-      }
-    ],
-    series: [
-      {
-        name: '训练时长',
-        type: 'bar',
-        data: durations,
-        barWidth: '30%',
-        itemStyle: {
-          borderRadius: [4, 4, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#667eea' },
-            { offset: 1, color: '#764ba2' }
-          ])
-        }
-      },
-      {
-        name: '消耗卡路里',
-        type: 'line',
-        yAxisIndex: 1,
-        data: calories,
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { width: 2, color: '#e6a23c' },
-        itemStyle: { color: '#e6a23c' }
-      }
-    ]
-  }
-
-  weeklyChart.setOption(option)
-}
+const weeklyStatsOption = computed(() => {
+  return getWeeklyStatsOption(stats.value.weekly_data || [])
+})
 
 onMounted(() => {
-  loadStats()
-
-  window.addEventListener('resize', () => {
-    typeChart?.resize()
-    weightChart?.resize()
-    weeklyChart?.resize()
-  })
+  statsStore.loadStats()
 })
 </script>
 
@@ -316,15 +97,5 @@ onMounted(() => {
   font-weight: 600;
   color: #303133;
   margin-bottom: 15px;
-}
-
-.chart {
-  height: 280px;
-  width: 100%;
-}
-
-.chart-horizontal {
-  height: 320px;
-  width: 100%;
 }
 </style>

@@ -68,7 +68,7 @@
                   <div v-if="workout.notes" class="workout-notes">{{ workout.notes }}</div>
                 </div>
                 <div class="workout-actions">
-                  <el-button type="danger" text :icon="Delete" @click="deleteWorkout(workout.id)">删除</el-button>
+                  <el-button type="danger" text :icon="Delete" @click="deleteWorkoutItem(workout.id)">删除</el-button>
                 </div>
               </div>
             </div>
@@ -123,8 +123,8 @@
 
             <div class="target-progress-bar">
               <el-progress
-                :percentage="targetPercentage"
-                :color="targetColor"
+                :percentage="statsStore.targetPercentage"
+                :color="statsStore.targetColor"
                 :stroke-width="18"
                 :format="formatProgress"
                 striped
@@ -132,10 +132,10 @@
               />
             </div>
 
-            <div class="target-message" :class="targetAchieved ? 'achieved' : 'pending'">
-              <el-icon v-if="targetAchieved"><CircleCheckFilled /></el-icon>
+            <div class="target-message" :class="statsStore.targetAchieved ? 'achieved' : 'pending'">
+              <el-icon v-if="statsStore.targetAchieved"><CircleCheckFilled /></el-icon>
               <el-icon v-else><Trophy /></el-icon>
-              <span v-if="targetAchieved">太棒了！已达成目标体重 🎉</span>
+              <span v-if="statsStore.targetAchieved">太棒了！已达成目标体重 🎉</span>
               <span v-else>加油！距离目标还差 <strong>{{ Math.abs(stats.weight_to_target).toFixed(1) }}</strong> kg</span>
             </div>
           </div>
@@ -145,7 +145,7 @@
           <div class="card-header">
             <h3>本周训练</h3>
           </div>
-          <div ref="weeklyChartRef" class="weekly-chart"></div>
+          <BaseChart :option="weeklyChartOption" height="200px" />
         </div>
       </el-col>
     </el-row>
@@ -225,53 +225,35 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Clock, Star, Delete, Document, DataLine,
   ArrowUp, ArrowDown, ArrowRight, Trophy, CircleCheckFilled
 } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
 import dayjs from 'dayjs'
 import { getWorkouts, createWorkout, deleteWorkout } from '@/api/workout'
 import { getWeightRecords, createWeightRecord } from '@/api/weight'
-import { getStats } from '@/api/stats'
+import { useStatsStore } from '@/stores/stats'
+import { getWorkoutTypeColor } from '@/utils/constants'
+import { getWeeklyWorkoutOption } from '@/utils/chartOptions'
+import BaseChart from '@/components/BaseChart.vue'
 
 const router = useRouter()
+const statsStore = useStatsStore()
 const today = dayjs().format('YYYY-MM-DD')
-const stats = ref({})
+
 const todayWorkouts = ref([])
 const latestWeight = ref(null)
 const showWorkoutDialog = ref(false)
 const showWeightDialog = ref(false)
 const submitting = ref(false)
-const weeklyChartRef = ref(null)
-let weeklyChart = null
 
-const targetAchieved = computed(() => {
-  return stats.value.target_weight &&
-         stats.value.current_weight &&
-         stats.value.current_weight <= stats.value.target_weight
-})
+const stats = computed(() => statsStore.stats)
 
-const targetPercentage = computed(() => {
-  if (!stats.value.target_weight || !stats.value.current_weight) return 0
-  const current = stats.value.current_weight
-  const target = stats.value.target_weight
-  const initial = stats.value.weight_history?.[0]?.weight || current
-  const total = Math.abs(initial - target)
-  if (total === 0) return 100
-  const done = Math.abs(initial - current)
-  let pct = (done / total) * 100
-  return Math.min(100, Math.max(0, Math.round(pct)))
-})
-
-const targetColor = computed(() => {
-  if (targetAchieved.value) return '#67c23a'
-  if (targetPercentage.value >= 70) return '#95d475'
-  if (targetPercentage.value >= 40) return '#e6a23c'
-  return '#f56c6c'
+const weeklyChartOption = computed(() => {
+  return getWeeklyWorkoutOption(stats.value.weekly_data || [])
 })
 
 const formatProgress = (percentage) => {
@@ -296,95 +278,19 @@ const weightForm = ref({
   body_fat: null
 })
 
-const getWorkoutTypeColor = (type) => {
-  const colors = {
-    '力量训练': '',
-    '有氧训练': 'success',
-    'HIIT': 'warning',
-    '瑜伽': 'info',
-    '跑步': 'success',
-    '游泳': 'primary',
-    '骑行': '',
-    '其他': 'info'
-  }
-  return colors[type] || ''
-}
-
 const loadData = async () => {
   try {
-    const [workoutsRes, weightRes, statsRes] = await Promise.all([
+    const [workoutsRes, weightRes] = await Promise.all([
       getWorkouts({ start_date: dayjs().subtract(7, 'day').format('YYYY-MM-DD') }),
       getWeightRecords({ limit: 10 }),
-      getStats()
+      statsStore.loadStats()
     ])
 
     todayWorkouts.value = workoutsRes.filter(w => w.date === today)
     latestWeight.value = weightRes[0] || null
-    stats.value = statsRes
-
-    await nextTick()
-    renderWeeklyChart()
   } catch (err) {
     console.error('加载数据失败', err)
   }
-}
-
-const renderWeeklyChart = () => {
-  if (!weeklyChartRef.value) return
-
-  if (!weeklyChart) {
-    weeklyChart = echarts.init(weeklyChartRef.value)
-  }
-
-  const days = []
-  const data = []
-  for (let i = 6; i >= 0; i--) {
-    const d = dayjs().subtract(i, 'day')
-    days.push(d.format('MM-DD'))
-    const dayStat = stats.value.weekly_data?.find(item => item.date === d.format('YYYY-MM-DD'))
-    data.push(dayStat?.duration || 0)
-  }
-
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      formatter: '{b}<br/>训练时长: {c} 分钟'
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '10%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: days,
-      axisLine: { lineStyle: { color: '#e4e7ed' } },
-      axisLabel: { color: '#909399', fontSize: 12 }
-    },
-    yAxis: {
-      type: 'value',
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f0f2f5' } },
-      axisLabel: { color: '#909399', fontSize: 12 }
-    },
-    series: [{
-      data: data,
-      type: 'bar',
-      barWidth: '50%',
-      itemStyle: {
-        borderRadius: [4, 4, 0, 0],
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#667eea' },
-          { offset: 1, color: '#764ba2' }
-        ])
-      }
-    }]
-  }
-
-  weeklyChart.setOption(option)
 }
 
 const submitWorkout = async () => {
@@ -405,7 +311,7 @@ const submitWorkout = async () => {
       calories: null,
       notes: ''
     }
-    loadData()
+    await Promise.all([loadData(), statsStore.refreshStats()])
   } catch (err) {
     console.error(err)
   } finally {
@@ -419,7 +325,7 @@ const submitWeight = async () => {
     await createWeightRecord(weightForm.value)
     ElMessage.success('体重记录已保存！')
     showWeightDialog.value = false
-    loadData()
+    await Promise.all([loadData(), statsStore.refreshStats()])
   } catch (err) {
     console.error(err)
   } finally {
@@ -434,7 +340,7 @@ const deleteWorkoutItem = async (id) => {
     })
     await deleteWorkout(id)
     ElMessage.success('删除成功')
-    loadData()
+    await Promise.all([loadData(), statsStore.refreshStats()])
   } catch (err) {
     if (err !== 'cancel') {
       console.error(err)
@@ -444,10 +350,6 @@ const deleteWorkoutItem = async (id) => {
 
 onMounted(() => {
   loadData()
-
-  window.addEventListener('resize', () => {
-    weeklyChart?.resize()
-  })
 })
 </script>
 
@@ -557,11 +459,6 @@ onMounted(() => {
   color: #f56c6c;
 }
 
-.weekly-chart {
-  height: 200px;
-  width: 100%;
-}
-
 .target-card {
   background: linear-gradient(135deg, #fff9f0 0%, #fff5f6 100%);
 }
@@ -625,10 +522,5 @@ onMounted(() => {
 .target-message.achieved {
   background: #f0f9eb;
   color: #67c23a;
-}
-
-.target-message strong {
-  font-size: 18px;
-  margin: 0 4px;
 }
 </style>

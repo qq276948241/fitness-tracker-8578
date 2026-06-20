@@ -20,14 +20,12 @@
                 value-format="YYYY-MM-DD"
               />
               <el-select v-model="filterType" placeholder="训练类型" clearable style="width: 150px">
-                <el-option label="力量训练" value="力量训练" />
-                <el-option label="有氧训练" value="有氧训练" />
-                <el-option label="HIIT" value="HIIT" />
-                <el-option label="瑜伽" value="瑜伽" />
-                <el-option label="跑步" value="跑步" />
-                <el-option label="游泳" value="游泳" />
-                <el-option label="骑行" value="骑行" />
-                <el-option label="其他" value="其他" />
+                <el-option
+                  v-for="t in workoutTypes"
+                  :key="t"
+                  :label="t"
+                  :value="t"
+                />
               </el-select>
               <el-button type="primary" :icon="Search" @click="loadWorkouts">查询</el-button>
               <el-button :icon="Refresh" @click="resetFilters">重置</el-button>
@@ -65,67 +63,16 @@
             />
           </div>
 
-          <div v-else class="calendar-view" v-loading="calendarLoading">
-            <div class="calendar-header">
-              <el-button :icon="ArrowLeft" circle @click="prevMonth" />
-              <span class="calendar-title">{{ calendarYear }}年{{ calendarMonth }}月</span>
-              <el-button :icon="ArrowRight" circle @click="nextMonth" />
-              <el-button type="primary" plain size="small" @click="goToday" style="margin-left: 12px">今天</el-button>
-              <div class="calendar-summary">
-                <el-tag type="success">打卡 {{ calendarSummary.checked_days }}/{{ calendarSummary.total_days }} 天</el-tag>
-                <el-tag type="warning">训练 {{ calendarSummary.total_duration }} 分钟</el-tag>
-                <el-tag type="danger">消耗 {{ calendarSummary.total_calories }} 千卡</el-tag>
-              </div>
-            </div>
-
-            <div class="calendar-grid">
-              <div class="calendar-weekday" v-for="w in weekdays" :key="w">{{ w }}</div>
-              <div
-                v-for="cell in calendarCells"
-                :key="cell.key"
-                class="calendar-cell"
-                :class="{
-                  'other-month': !cell.currentMonth,
-                  'checked': cell.checked_in,
-                  'today': cell.isToday
-                }"
-                @click="cell.currentMonth && selectDay(cell)"
-              >
-                <template v-if="cell.currentMonth">
-                  <div class="cell-header">
-                    <span class="cell-day">{{ cell.day }}</span>
-                    <el-icon v-if="cell.checked_in" class="cell-check"><CircleCheckFilled /></el-icon>
-                  </div>
-                  <div v-if="cell.checked_in" class="cell-body">
-                    <div class="cell-types">
-                      <el-tag
-                        v-for="t in cell.types.slice(0, 2)"
-                        :key="t"
-                        :type="getWorkoutTypeColor(t)"
-                        size="small"
-                      >
-                        {{ t }}
-                      </el-tag>
-                      <span v-if="cell.types.length > 2" class="cell-more">+{{ cell.types.length - 2 }}</span>
-                    </div>
-                    <div class="cell-meta">
-                      <span v-if="cell.duration"><el-icon><Clock /></el-icon>{{ cell.duration }}min</span>
-                      <span v-if="cell.calories"><el-icon><Star /></el-icon>{{ cell.calories }}kcal</span>
-                    </div>
-                  </div>
-                  <div v-if="cell.weight" class="cell-weight">
-                    <el-icon><DataLine /></el-icon>{{ cell.weight.toFixed(1) }}kg
-                  </div>
-                </template>
-              </div>
-            </div>
-
-            <div class="calendar-legend">
-              <span class="legend-item"><span class="legend-box checked"></span>已打卡</span>
-              <span class="legend-item"><span class="legend-box"></span>未打卡</span>
-              <span class="legend-item"><span class="legend-box today"></span>今天</span>
-            </div>
-          </div>
+          <CalendarView
+            v-else
+            v-model:year="calendarYear"
+            v-model:month="calendarMonth"
+            :days="calendarDays"
+            :summary="calendarSummary"
+            :loading="calendarLoading"
+            @change="handleCalendarChange"
+            @day-click="handleDayClick"
+          />
         </div>
       </el-tab-pane>
 
@@ -190,14 +137,12 @@
         </el-form-item>
         <el-form-item label="训练类型">
           <el-select v-model="workoutForm.workout_type" placeholder="请选择训练类型" style="width: 100%">
-            <el-option label="力量训练" value="力量训练" />
-            <el-option label="有氧训练" value="有氧训练" />
-            <el-option label="HIIT" value="HIIT" />
-            <el-option label="瑜伽" value="瑜伽" />
-            <el-option label="游泳" value="游泳" />
-            <el-option label="跑步" value="跑步" />
-            <el-option label="骑行" value="骑行" />
-            <el-option label="其他" value="其他" />
+            <el-option
+              v-for="t in workoutTypes"
+              :key="t"
+              :label="t"
+              :value="t"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="时长">
@@ -260,12 +205,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Search, Refresh, List, Calendar, ArrowLeft, ArrowRight,
-  CircleCheckFilled, Clock, Star, DataLine
-} from '@element-plus/icons-vue'
+import { Search, Refresh, List, Calendar } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import {
   getWorkouts,
@@ -277,7 +219,11 @@ import {
   updateWeightRecord,
   deleteWeightRecord
 } from '@/api/weight'
-import { getCalendarData } from '@/api/stats'
+import { useStatsStore } from '@/stores/stats'
+import { WORKOUT_TYPES, getWorkoutTypeColor } from '@/utils/constants'
+import CalendarView from '@/components/CalendarView.vue'
+
+const statsStore = useStatsStore()
 
 const activeTab = ref('workout')
 const viewMode = ref('list')
@@ -289,13 +235,13 @@ const weightRecords = ref([])
 const loading = ref(false)
 const weightLoading = ref(false)
 const submitting = ref(false)
+const workoutTypes = WORKOUT_TYPES
 
 const calendarLoading = ref(false)
 const calendarYear = ref(dayjs().year())
 const calendarMonth = ref(dayjs().month() + 1)
 const calendarDays = ref([])
 const calendarSummary = ref({ checked_days: 0, total_days: 0, total_duration: 0, total_calories: 0 })
-const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 
 const workoutDialogVisible = ref(false)
 const weightDialogVisible = ref(false)
@@ -316,66 +262,6 @@ const weightForm = ref({
   body_fat: null,
   notes: ''
 })
-
-const calendarCells = computed(() => {
-  const firstDay = dayjs(`${calendarYear.value}-${String(calendarMonth.value).padStart(2, '0')}-01`)
-  const startWeekday = firstDay.day()
-  const cells = []
-
-  for (let i = startWeekday; i > 0; i--) {
-    const d = firstDay.subtract(i, 'day')
-    cells.push({
-      key: `prev-${d.format('YYYY-MM-DD')}`,
-      currentMonth: false,
-      day: d.date()
-    })
-  }
-
-  for (const day of calendarDays.value) {
-    const today = dayjs().format('YYYY-MM-DD')
-    cells.push({
-      key: `cur-${day.date}`,
-      currentMonth: true,
-      day: day.day,
-      date: day.date,
-      checked_in: day.checked_in,
-      workout_count: day.workout_count,
-      duration: day.duration,
-      calories: day.calories,
-      types: day.types || [],
-      weight: day.weight,
-      isToday: day.date === today
-    })
-  }
-
-  while (cells.length % 7 !== 0) {
-    const lastDate = cells[cells.length - 1]
-    const nextDate = dayjs(lastDate.date || `${calendarYear.value}-${String(calendarMonth.value).padStart(2, '0')}-01`).add(1, 'month').startOf('month')
-    const offset = cells.length - startWeekday - calendarDays.value.length
-    const d = nextDate.add(offset, 'day')
-    cells.push({
-      key: `next-${d.format('YYYY-MM-DD')}`,
-      currentMonth: false,
-      day: d.date()
-    })
-  }
-
-  return cells
-})
-
-const getWorkoutTypeColor = (type) => {
-  const colors = {
-    '力量训练': '',
-    '有氧训练': 'success',
-    'HIIT': 'warning',
-    '瑜伽': 'info',
-    '跑步': 'success',
-    '游泳': 'primary',
-    '骑行': '',
-    '其他': 'info'
-  }
-  return colors[type] || ''
-}
 
 const loadWorkouts = async () => {
   loading.value = true
@@ -400,9 +286,9 @@ const loadWorkouts = async () => {
 const loadCalendar = async () => {
   calendarLoading.value = true
   try {
-    const res = await getCalendarData(calendarYear.value, calendarMonth.value)
-    calendarDays.value = res.days
-    calendarSummary.value = res.summary
+    const data = await statsStore.loadCalendarData(calendarYear.value, calendarMonth.value)
+    calendarDays.value = data.days
+    calendarSummary.value = data.summary
   } catch (err) {
     console.error(err)
   } finally {
@@ -410,34 +296,13 @@ const loadCalendar = async () => {
   }
 }
 
-const prevMonth = () => {
-  if (calendarMonth.value === 1) {
-    calendarMonth.value = 12
-    calendarYear.value--
-  } else {
-    calendarMonth.value--
-  }
+const handleCalendarChange = ({ year, month }) => {
+  calendarYear.value = year
+  calendarMonth.value = month
   loadCalendar()
 }
 
-const nextMonth = () => {
-  if (calendarMonth.value === 12) {
-    calendarMonth.value = 1
-    calendarYear.value++
-  } else {
-    calendarMonth.value++
-  }
-  loadCalendar()
-}
-
-const goToday = () => {
-  const now = dayjs()
-  calendarYear.value = now.year()
-  calendarMonth.value = now.month() + 1
-  loadCalendar()
-}
-
-const selectDay = (cell) => {
+const handleDayClick = (cell) => {
   if (cell.checked_in) {
     ElMessage.success(`${cell.date} 打卡成功！训练 ${cell.workout_count} 次`)
   } else {
@@ -446,7 +311,7 @@ const selectDay = (cell) => {
 }
 
 watch(viewMode, (val) => {
-  if (val === 'calendar' && calendarDays.value.length === 0) {
+  if (val === 'calendar') {
     loadCalendar()
   }
 })
@@ -508,7 +373,11 @@ const submitWorkoutEdit = async () => {
     await updateWorkout(editingWorkoutId.value, workoutForm.value)
     ElMessage.success('更新成功')
     workoutDialogVisible.value = false
-    loadWorkouts()
+    await Promise.all([
+      loadWorkouts(),
+      statsStore.refreshStats(),
+      statsStore.refreshCalendar(calendarYear.value, calendarMonth.value)
+    ])
   } catch (err) {
     console.error(err)
   } finally {
@@ -522,7 +391,11 @@ const submitWeightEdit = async () => {
     await updateWeightRecord(editingWeightId.value, weightForm.value)
     ElMessage.success('更新成功')
     weightDialogVisible.value = false
-    loadWeights()
+    await Promise.all([
+      loadWeights(),
+      statsStore.refreshStats(),
+      statsStore.refreshCalendar(calendarYear.value, calendarMonth.value)
+    ])
   } catch (err) {
     console.error(err)
   } finally {
@@ -537,10 +410,11 @@ const deleteWorkoutItem = async (id) => {
     })
     await deleteWorkout(id)
     ElMessage.success('删除成功')
-    loadWorkouts()
-    if (viewMode.value === 'calendar') {
-      loadCalendar()
-    }
+    await Promise.all([
+      loadWorkouts(),
+      statsStore.refreshStats(),
+      statsStore.refreshCalendar(calendarYear.value, calendarMonth.value)
+    ])
   } catch (err) {
     if (err !== 'cancel') {
       console.error(err)
@@ -555,7 +429,11 @@ const deleteWeightItem = async (id) => {
     })
     await deleteWeightRecord(id)
     ElMessage.success('删除成功')
-    loadWeights()
+    await Promise.all([
+      loadWeights(),
+      statsStore.refreshStats(),
+      statsStore.refreshCalendar(calendarYear.value, calendarMonth.value)
+    ])
   } catch (err) {
     if (err !== 'cancel') {
       console.error(err)
@@ -598,170 +476,5 @@ onMounted(() => {
 .weight-value {
   font-weight: 600;
   color: #67c23a;
-}
-
-.calendar-view {
-  min-height: 400px;
-}
-
-.calendar-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.calendar-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-  min-width: 120px;
-  text-align: center;
-}
-
-.calendar-summary {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-}
-
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
-}
-
-.calendar-weekday {
-  text-align: center;
-  font-weight: 600;
-  color: #909399;
-  padding: 8px 0;
-  font-size: 13px;
-}
-
-.calendar-cell {
-  min-height: 90px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  padding: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-}
-
-.calendar-cell:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
-}
-
-.calendar-cell.other-month {
-  background: #fafafa;
-  opacity: 0.5;
-  cursor: default;
-}
-
-.calendar-cell.checked {
-  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
-  border-color: #b3e19d;
-}
-
-.calendar-cell.today {
-  border: 2px solid #409eff;
-}
-
-.cell-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.cell-day {
-  font-size: 14px;
-  font-weight: 600;
-  color: #606266;
-}
-
-.cell-check {
-  color: #67c23a;
-  font-size: 16px;
-}
-
-.cell-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cell-types {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  align-items: center;
-}
-
-.cell-more {
-  font-size: 11px;
-  color: #909399;
-}
-
-.cell-meta {
-  display: flex;
-  gap: 8px;
-  font-size: 11px;
-  color: #606266;
-  flex-wrap: wrap;
-}
-
-.cell-meta span {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.cell-weight {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #e6a23c;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  font-weight: 600;
-}
-
-.calendar-legend {
-  display: flex;
-  gap: 20px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #f0f2f5;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #606266;
-}
-
-.legend-box {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1px solid #dcdfe6;
-  background: #fff;
-}
-
-.legend-box.checked {
-  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
-  border-color: #b3e19d;
-}
-
-.legend-box.today {
-  border: 2px solid #409eff;
 }
 </style>

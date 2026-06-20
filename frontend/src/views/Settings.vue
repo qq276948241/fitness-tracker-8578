@@ -102,16 +102,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { useStatsStore } from '@/stores/stats'
 import { updateProfile } from '@/api/auth'
-import { getStats } from '@/api/stats'
 
 const userStore = useUserStore()
+const statsStore = useStatsStore()
 const saving = ref(false)
 const changingPwd = ref(false)
-const stats = ref({})
+
+const stats = computed(() => statsStore.stats)
 
 const form = ref({
   username: '',
@@ -139,15 +141,6 @@ const loadUserInfo = () => {
   }
 }
 
-const loadStats = async () => {
-  try {
-    const res = await getStats()
-    stats.value = res
-  } catch (err) {
-    console.error(err)
-  }
-}
-
 const saveProfile = async () => {
   try {
     saving.value = true
@@ -160,7 +153,7 @@ const saveProfile = async () => {
     })
     userStore.updateUser(res)
     ElMessage.success('保存成功')
-    loadStats()
+    statsStore.refreshStats()
   } catch (err) {
     console.error(err)
   } finally {
@@ -192,7 +185,7 @@ const changePassword = async () => {
 
 onMounted(() => {
   loadUserInfo()
-  loadStats()
+  statsStore.loadStats()
 })
 </script>
 

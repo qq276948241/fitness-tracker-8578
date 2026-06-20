@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(100))
     height = Column(Float)
+    target_weight = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     workout_records = relationship("WorkoutRecord", back_populates="user", cascade="all, delete-orphan")

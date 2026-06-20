@@ -127,6 +127,7 @@ def update_profile(
     current_user.full_name = user_update.full_name
     current_user.height = user_update.height
     current_user.email = user_update.email
+    current_user.target_weight = user_update.target_weight
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -349,6 +350,85 @@ def create_workout_plan(
     return db_plan
 
 
+def build_calendar_data(workouts, weights, year: int, month: int):
+    import calendar as cal
+
+    first_day = date(year, month, 1)
+    if month == 12:
+        last_day = date(year, month, 31)
+    else:
+        last_day = date(year, month + 1, 1) - timedelta(days=1)
+
+    month_workouts = [w for w in workouts if first_day <= w.date <= last_day]
+    month_weights = [w for w in weights if first_day <= w.date <= last_day]
+
+    workout_by_day = {}
+    for w in month_workouts:
+        d = w.date.isoformat()
+        if d not in workout_by_day:
+            workout_by_day[d] = {"count": 0, "duration": 0, "calories": 0, "types": []}
+        workout_by_day[d]["count"] += 1
+        workout_by_day[d]["duration"] += w.duration or 0
+        workout_by_day[d]["calories"] += w.calories or 0
+        if w.workout_type not in workout_by_day[d]["types"]:
+            workout_by_day[d]["types"].append(w.workout_type)
+
+    weight_by_day = {}
+    for w in month_weights:
+        weight_by_day[w.date.isoformat()] = w.weight
+
+    days_in_month = cal.monthrange(year, month)[1]
+    calendar_data = []
+    for day in range(1, days_in_month + 1):
+        d = date(year, month, day).isoformat()
+        info = workout_by_day.get(d, {"count": 0, "duration": 0, "calories": 0, "types": []})
+        calendar_data.append({
+            "date": d,
+            "day": day,
+            "checked_in": info["count"] > 0,
+            "workout_count": info["count"],
+            "duration": info["duration"],
+            "calories": info["calories"],
+            "types": info["types"],
+            "weight": weight_by_day.get(d)
+        })
+    return calendar_data
+
+
+@app.get("/api/calendar")
+def get_calendar_data(
+    year: int,
+    month: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    workouts = db.query(models.WorkoutRecord).filter(
+        models.WorkoutRecord.user_id == current_user.id
+    ).all()
+
+    weights = db.query(models.WeightRecord).filter(
+        models.WeightRecord.user_id == current_user.id
+    ).all()
+
+    calendar_data = build_calendar_data(workouts, weights, year, month)
+
+    checked_days = sum(1 for d in calendar_data if d["checked_in"])
+    total_duration = sum(d["duration"] for d in calendar_data)
+    total_calories = sum(d["calories"] for d in calendar_data)
+
+    return {
+        "year": year,
+        "month": month,
+        "days": calendar_data,
+        "summary": {
+            "checked_days": checked_days,
+            "total_days": len(calendar_data),
+            "total_duration": total_duration,
+            "total_calories": total_calories
+        }
+    }
+
+
 @app.get("/api/stats", response_model=schemas.StatsResponse)
 def get_stats(
     current_user: models.User = Depends(get_current_user),
@@ -376,6 +456,11 @@ def get_stats(
     current_weight = weights[-1].weight if weights else None
     weight_change = (weights[-1].weight - weights[0].weight) if len(weights) >= 2 else None
 
+    target_weight = current_user.target_weight
+    weight_to_target = None
+    if current_weight is not None and target_weight is not None:
+        weight_to_target = round(current_weight - target_weight, 1)
+
     today = date.today()
     week_ago = today - timedelta(days=6)
     weekly_data = []
@@ -394,15 +479,20 @@ def get_stats(
         for w in weights
     ]
 
+    calendar_data = build_calendar_data(workouts, weights, today.year, today.month)
+
     return schemas.StatsResponse(
         total_workouts=total_workouts,
         total_duration=total_duration,
         total_calories=total_calories,
         current_weight=current_weight,
         weight_change=weight_change,
+        target_weight=target_weight,
+        weight_to_target=weight_to_target,
         workout_types=workout_types,
         weekly_data=weekly_data,
-        weight_history=weight_history
+        weight_history=weight_history,
+        calendar_data=calendar_data
     )
 
 

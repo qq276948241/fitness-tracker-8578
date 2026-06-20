@@ -11,3 +11,7 @@ export function createPlan(data) {
 export function getStats() {
   return request.get('/stats')
 }
+
+export function getCalendarData(year, month) {
+  return request.get('/calendar', { params: { year, month } })
+}

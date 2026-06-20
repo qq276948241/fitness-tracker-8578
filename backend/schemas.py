@@ -8,6 +8,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     height: Optional[float] = None
+    target_weight: Optional[float] = None
 
 
 class UserCreate(UserBase):
@@ -113,6 +114,9 @@ class StatsResponse(BaseModel):
     total_calories: int
     current_weight: Optional[float] = None
     weight_change: Optional[float] = None
+    target_weight: Optional[float] = None
+    weight_to_target: Optional[float] = None
     workout_types: dict
     weekly_data: List[dict]
     weight_history: List[dict]
+    calendar_data: List[dict]

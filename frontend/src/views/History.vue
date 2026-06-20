@@ -6,56 +6,126 @@
       <el-tab-pane label="训练记录" name="workout">
         <div class="card">
           <div class="filter-bar">
-            <el-date-picker
-              v-model="dateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              value-format="YYYY-MM-DD"
-            />
-            <el-select v-model="filterType" placeholder="训练类型" clearable style="width: 150px">
-              <el-option label="力量训练" value="力量训练" />
-              <el-option label="有氧训练" value="有氧训练" />
-              <el-option label="HIIT" value="HIIT" />
-              <el-option label="瑜伽" value="瑜伽" />
-              <el-option label="跑步" value="跑步" />
-              <el-option label="游泳" value="游泳" />
-              <el-option label="骑行" value="骑行" />
-              <el-option label="其他" value="其他" />
-            </el-select>
-            <el-button type="primary" :icon="Search" @click="loadWorkouts">查询</el-button>
-            <el-button :icon="Refresh" @click="resetFilters">重置</el-button>
+            <el-radio-group v-model="viewMode" class="view-switch">
+              <el-radio-button value="list"><el-icon><List /></el-icon> 列表</el-radio-button>
+              <el-radio-button value="calendar"><el-icon><Calendar /></el-icon> 日历</el-radio-button>
+            </el-radio-group>
+            <template v-if="viewMode === 'list'">
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                value-format="YYYY-MM-DD"
+              />
+              <el-select v-model="filterType" placeholder="训练类型" clearable style="width: 150px">
+                <el-option label="力量训练" value="力量训练" />
+                <el-option label="有氧训练" value="有氧训练" />
+                <el-option label="HIIT" value="HIIT" />
+                <el-option label="瑜伽" value="瑜伽" />
+                <el-option label="跑步" value="跑步" />
+                <el-option label="游泳" value="游泳" />
+                <el-option label="骑行" value="骑行" />
+                <el-option label="其他" value="其他" />
+              </el-select>
+              <el-button type="primary" :icon="Search" @click="loadWorkouts">查询</el-button>
+              <el-button :icon="Refresh" @click="resetFilters">重置</el-button>
+            </template>
           </div>
 
-          <el-table :data="workouts" style="width: 100%" v-loading="loading">
-            <el-table-column prop="date" label="日期" width="120" />
-            <el-table-column prop="workout_type" label="训练类型" width="120">
-              <template #default="{ row }">
-                <el-tag :type="getWorkoutTypeColor(row.workout_type)" size="small">
-                  {{ row.workout_type }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="duration" label="时长(分钟)" width="100" />
-            <el-table-column prop="calories" label="消耗(千卡)" width="100" />
-            <el-table-column prop="notes" label="备注" show-overflow-tooltip />
-            <el-table-column label="操作" width="120" fixed="right">
-              <template #default="{ row }">
-                <el-button type="primary" link size="small" @click="editWorkout(row)">编辑</el-button>
-                <el-button type="danger" link size="small" @click="deleteWorkoutItem(row.id)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div v-if="viewMode === 'list'">
+            <el-table :data="workouts" style="width: 100%" v-loading="loading">
+              <el-table-column prop="date" label="日期" width="120" />
+              <el-table-column prop="workout_type" label="训练类型" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="getWorkoutTypeColor(row.workout_type)" size="small">
+                    {{ row.workout_type }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="duration" label="时长(分钟)" width="100" />
+              <el-table-column prop="calories" label="消耗(千卡)" width="100" />
+              <el-table-column prop="notes" label="备注" show-overflow-tooltip />
+              <el-table-column label="操作" width="120" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" link size="small" @click="editWorkout(row)">编辑</el-button>
+                  <el-button type="danger" link size="small" @click="deleteWorkoutItem(row.id)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
 
-          <el-pagination
-            v-if="workouts.length > 0"
-            class="pagination"
-            layout="total, prev, pager, next"
-            :total="workouts.length"
-            :page-size="10"
-            background
-          />
+            <el-pagination
+              v-if="workouts.length > 0"
+              class="pagination"
+              layout="total, prev, pager, next"
+              :total="workouts.length"
+              :page-size="10"
+              background
+            />
+          </div>
+
+          <div v-else class="calendar-view" v-loading="calendarLoading">
+            <div class="calendar-header">
+              <el-button :icon="ArrowLeft" circle @click="prevMonth" />
+              <span class="calendar-title">{{ calendarYear }}年{{ calendarMonth }}月</span>
+              <el-button :icon="ArrowRight" circle @click="nextMonth" />
+              <el-button type="primary" plain size="small" @click="goToday" style="margin-left: 12px">今天</el-button>
+              <div class="calendar-summary">
+                <el-tag type="success">打卡 {{ calendarSummary.checked_days }}/{{ calendarSummary.total_days }} 天</el-tag>
+                <el-tag type="warning">训练 {{ calendarSummary.total_duration }} 分钟</el-tag>
+                <el-tag type="danger">消耗 {{ calendarSummary.total_calories }} 千卡</el-tag>
+              </div>
+            </div>
+
+            <div class="calendar-grid">
+              <div class="calendar-weekday" v-for="w in weekdays" :key="w">{{ w }}</div>
+              <div
+                v-for="cell in calendarCells"
+                :key="cell.key"
+                class="calendar-cell"
+                :class="{
+                  'other-month': !cell.currentMonth,
+                  'checked': cell.checked_in,
+                  'today': cell.isToday
+                }"
+                @click="cell.currentMonth && selectDay(cell)"
+              >
+                <template v-if="cell.currentMonth">
+                  <div class="cell-header">
+                    <span class="cell-day">{{ cell.day }}</span>
+                    <el-icon v-if="cell.checked_in" class="cell-check"><CircleCheckFilled /></el-icon>
+                  </div>
+                  <div v-if="cell.checked_in" class="cell-body">
+                    <div class="cell-types">
+                      <el-tag
+                        v-for="t in cell.types.slice(0, 2)"
+                        :key="t"
+                        :type="getWorkoutTypeColor(t)"
+                        size="small"
+                      >
+                        {{ t }}
+                      </el-tag>
+                      <span v-if="cell.types.length > 2" class="cell-more">+{{ cell.types.length - 2 }}</span>
+                    </div>
+                    <div class="cell-meta">
+                      <span v-if="cell.duration"><el-icon><Clock /></el-icon>{{ cell.duration }}min</span>
+                      <span v-if="cell.calories"><el-icon><Star /></el-icon>{{ cell.calories }}kcal</span>
+                    </div>
+                  </div>
+                  <div v-if="cell.weight" class="cell-weight">
+                    <el-icon><DataLine /></el-icon>{{ cell.weight.toFixed(1) }}kg
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div class="calendar-legend">
+              <span class="legend-item"><span class="legend-box checked"></span>已打卡</span>
+              <span class="legend-item"><span class="legend-box"></span>未打卡</span>
+              <span class="legend-item"><span class="legend-box today"></span>今天</span>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
 
